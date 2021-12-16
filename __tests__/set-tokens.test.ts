@@ -60,13 +60,13 @@ describe('setSSHKey()', () => {
 
   test('return correct repo address', async () => {
     const inps: Inputs = createInputs();
-    const test = await setSSHKey(inps, 'owner/repo');
+    const test = await setSSHKey(inps, 'github.com/owner/repo');
     expect(test).toMatch('git@github.com:owner/repo.git');
   });
 
   test('set known_hosts with the ssh-keyscan output if it succeeded', async () => {
     const inps: Inputs = createInputs();
-    await setSSHKey(inps, 'owner/repo');
+    await setSSHKey(inps, 'github.com/owner/repo');
 
     const mockGetExecOutput = await exec.getExecOutput('');
     expect(fs.writeFileSync).toHaveBeenCalledWith(
@@ -81,7 +81,7 @@ describe('setSSHKey()', () => {
       throw new Error('error');
     });
 
-    await setSSHKey(inps, 'owner/repo');
+    await setSSHKey(inps, 'github.com/owner/repo');
     expect(fs.writeFileSync).toHaveBeenCalledWith(
       expect.stringContaining('known_hosts'),
       expect.stringContaining('# github.com:22 SSH-2.0-babeld-1f0633a6')
@@ -90,14 +90,44 @@ describe('setSSHKey()', () => {
 });
 
 describe('getPublishRepo()', () => {
-  test('return repository name', () => {
-    const test = getPublishRepo('', 'owner', 'repo');
-    expect(test).toMatch('owner/repo');
+  test('return repository address', () => {
+    const test = getPublishRepo('', 'https://github.com', 'owner', 'repo');
+    expect(test).toEqual('github.com/owner/repo');
   });
 
-  test('return external repository name', () => {
-    const test = getPublishRepo('extOwner/extRepo', 'owner', 'repo');
-    expect(test).toMatch('extOwner/extRepo');
+  test('return correct repository address whent the default server address has a trailing slash', () => {
+    const test = getPublishRepo('', 'https://github.com/', 'owner', 'repo');
+    expect(test).toEqual('github.com/owner/repo');
+  });
+
+  test('return correct repository address whent the default server does not have protocol information', () => {
+    const test = getPublishRepo('', 'github.com', 'owner', 'repo');
+    expect(test).toEqual('github.com/owner/repo');
+  });
+
+  test('return external repository address', () => {
+    const test = getPublishRepo('extOwner/extRepo', 'https://github.com', 'owner', 'repo');
+    expect(test).toEqual('github.com/extOwner/extRepo');
+  });
+
+  test('return correct external repository address when a host address is given', () => {
+    const test = getPublishRepo(
+      'https://github.enterprise.server/extOwner/extRepo',
+      'https://github.com',
+      'owner',
+      'repo'
+    );
+    expect(test).toEqual(`github.enterprise.server/extOwner/extRepo`);
+  });
+
+  test('return correct external repository even if there is no protocol info', () => {
+    const test = getPublishRepo(
+      'github.enterprise.server/extOwner/extRepo',
+      'https://github.com',
+      'owner',
+      'repo'
+    );
+    expect(test).toEqual('github.enterprise.server/extOwner/extRepo');
   });
 });
 
@@ -106,7 +136,7 @@ describe('setGithubToken()', () => {
     const expected = 'https://x-access-token:GITHUB_TOKEN@github.com/owner/repo.git';
     const test = setGithubToken(
       'GITHUB_TOKEN',
-      'owner/repo',
+      'github.com/owner/repo',
       'gh-pages',
       '',
       'refs/heads/master',
@@ -119,7 +149,7 @@ describe('setGithubToken()', () => {
     const expected = 'https://x-access-token:GITHUB_TOKEN@github.com/owner/repo.git';
     const test = setGithubToken(
       'GITHUB_TOKEN',
-      'owner/repo',
+      'github.com/owner/repo',
       'master',
       '',
       'refs/heads/source',
@@ -132,7 +162,7 @@ describe('setGithubToken()', () => {
     const expected = 'https://x-access-token:GITHUB_TOKEN@github.com/owner/repo.git';
     const test = setGithubToken(
       'GITHUB_TOKEN',
-      'owner/repo',
+      'github.com/owner/repo',
       'gh-pages',
       '',
       'refs/heads/gh-pages-base',
@@ -145,7 +175,7 @@ describe('setGithubToken()', () => {
     expect(() => {
       setGithubToken(
         'GITHUB_TOKEN',
-        'owner/repo',
+        'github.com/owner/repo',
         'gh-pages-base',
         '',
         'refs/heads/gh-pages-base',
@@ -156,7 +186,14 @@ describe('setGithubToken()', () => {
 
   test('throw error master to master', () => {
     expect(() => {
-      setGithubToken('GITHUB_TOKEN', 'owner/repo', 'master', '', 'refs/heads/master', 'push');
+      setGithubToken(
+        'GITHUB_TOKEN',
+        'github.com/owner/repo',
+        'master',
+        '',
+        'refs/heads/master',
+        'push'
+      );
     }).toThrowError('You deploy from master to master');
   });
 
@@ -164,7 +201,7 @@ describe('setGithubToken()', () => {
     expect(() => {
       setGithubToken(
         'GITHUB_TOKEN',
-        'owner/repo',
+        'github.com/owner/repo',
         'gh-pages',
         'extOwner/extRepo',
         'refs/heads/master',
@@ -180,7 +217,7 @@ Use deploy_key or personal_token.
     const expected = 'https://x-access-token:GITHUB_TOKEN@github.com/owner/repo.git';
     const test = setGithubToken(
       'GITHUB_TOKEN',
-      'owner/repo',
+      'github.com/owner/repo',
       'gh-pages',
       '',
       'refs/pull/29/merge',
@@ -193,7 +230,7 @@ Use deploy_key or personal_token.
 describe('setPersonalToken()', () => {
   test('return remote url with personal access token', () => {
     const expected = 'https://x-access-token:pat@github.com/owner/repo.git';
-    const test = setPersonalToken('pat', 'owner/repo');
+    const test = setPersonalToken('pat', 'github.com/owner/repo');
     expect(test).toMatch(expected);
   });
 });

@@ -10,10 +10,11 @@ const cpSpawnSync = require('child_process').spawnSync;
 const cpexec = require('child_process').execFileSync;
 import {Inputs} from './interfaces';
 import {getHomeDir} from './utils';
-import {getServerUrl} from './git-utils';
+import {parseAddress} from './git-utils';
 
 export async function setSSHKey(inps: Inputs, publishRepo: string): Promise<string> {
   core.info('[INFO] setup SSH deploy key');
+  const [host, pathname] = parseAddress(publishRepo);
 
   const homeDir = await getHomeDir();
   const sshDir = path.join(homeDir, '.ssh');
@@ -23,13 +24,9 @@ export async function setSSHKey(inps: Inputs, publishRepo: string): Promise<stri
   const knownHosts = path.join(sshDir, 'known_hosts');
 
   // ssh-keyscan -t rsa github.com or serverUrl >> ~/.ssh/known_hosts on Ubuntu
-  const foundKnownHostKey = await (async () => {
+  const hostKey = await (async () => {
     try {
-      const keyscanOutput = await exec.getExecOutput('ssh-keyscan', [
-        '-t',
-        'rsa',
-        getServerUrl().host
-      ]);
+      const keyscanOutput = await exec.getExecOutput('ssh-keyscan', ['-t', 'rsa', host]);
       return keyscanOutput.stderr + keyscanOutput.stdout;
     } catch (e) {
       return `\
@@ -39,7 +36,7 @@ github.com ssh-rsa AAAAB3NzaC1yc2EAAAABIwAAAQEAq2A7hRGmdnm9tUDbO9IDSwBK6TbQa+PXY
     }
   })();
 
-  fs.writeFileSync(knownHosts, foundKnownHostKey);
+  fs.writeFileSync(knownHosts, hostKey);
   core.info(`[INFO] wrote ${knownHosts}`);
   await exec.exec('chmod', ['600', knownHosts]);
 
@@ -50,8 +47,8 @@ github.com ssh-rsa AAAAB3NzaC1yc2EAAAABIwAAAQEAq2A7hRGmdnm9tUDbO9IDSwBK6TbQa+PXY
 
   const sshConfigPath = path.join(sshDir, 'config');
   const sshConfigContent = `\
-Host ${getServerUrl().host}
-    HostName ${getServerUrl().host}
+Host ${host}
+    HostName ${host}
     IdentityFile ~/.ssh/github
     User git
 `;
@@ -74,7 +71,7 @@ Watch https://github.com/peaceiris/actions-gh-pages/issues/87
   core.exportVariable('SSH_AUTH_SOCK', '/tmp/ssh-auth.sock');
   await exec.exec('ssh-add', [idRSA]);
 
-  return `git@${getServerUrl().host}:${publishRepo}.git`;
+  return `git@${host}:${pathname}.git`;
 }
 
 export function setGithubToken(
@@ -107,26 +104,40 @@ This operation is prohibited to protect your contents
 `);
     }
   }
-
-  return `https://x-access-token:${githubToken}@${getServerUrl().host}/${publishRepo}.git`;
+  const [host, pathname] = parseAddress(publishRepo);
+  return `https://x-access-token:${githubToken}@${host}/${pathname}.git`;
 }
 
 export function setPersonalToken(personalToken: string, publishRepo: string): string {
   core.info('[INFO] setup personal access token');
-  return `https://x-access-token:${personalToken}@${getServerUrl().host}/${publishRepo}.git`;
+  const [host, pathname] = parseAddress(publishRepo);
+  return `https://x-access-token:${personalToken}@${host}/${pathname}.git`;
 }
 
-export function getPublishRepo(externalRepository: string, owner: string, repo: string): string {
-  if (externalRepository) {
-    return externalRepository;
+export function getPublishRepo(
+  externalRepository: string,
+  defaultServer: string,
+  owner: string,
+  repo: string
+): string {
+  const countSlashes = (str: string) => {
+    return (str.match(/\//g) || []).length;
+  };
+  const sanitizedDefaultServer = parseAddress(defaultServer)[0];
+  if (!externalRepository) {
+    return `${sanitizedDefaultServer}/${owner}/${repo}`;
   }
-  return `${owner}/${repo}`;
+  const sanitizedExternalRepo = parseAddress(externalRepository).join('/');
+  return countSlashes(sanitizedExternalRepo) <= 1
+    ? `${sanitizedDefaultServer}/${sanitizedExternalRepo}`
+    : sanitizedExternalRepo;
 }
 
 export async function setTokens(inps: Inputs): Promise<string> {
   try {
     const publishRepo = getPublishRepo(
       inps.ExternalRepository,
+      github.context.serverUrl,
       github.context.repo.owner,
       github.context.repo.repo
     );
