@@ -15,6 +15,7 @@ import {parseAddress} from './git-utils';
 export async function setSSHKey(inps: Inputs, publishRepo: string): Promise<string> {
   core.info('[INFO] setup SSH deploy key');
   const [host, pathname] = parseAddress(publishRepo);
+  const [sshProxyHost, sshProxyPort] = parseAddress(inps.SshProxy)[0].split(':');
 
   const homeDir = await getHomeDir();
   const sshDir = path.join(homeDir, '.ssh');
@@ -26,12 +27,23 @@ export async function setSSHKey(inps: Inputs, publishRepo: string): Promise<stri
   // ssh-keyscan -t rsa github.com or serverUrl >> ~/.ssh/known_hosts on Ubuntu
   const hostKey = await (async () => {
     try {
-      const keyscanOutput = await exec.getExecOutput('ssh-keyscan', ['-t', 'rsa', host]);
+      const portOption = sshProxyPort ? ['-p', sshProxyPort] : [];
+      const keyScanHost = sshProxyHost || host;
+      core.info(`[INFO] scanning SSH keys to ${keyScanHost}` + portOption ? `:${portOption}` : '');
+      const keyscanOutput = await exec.getExecOutput('ssh-keyscan', [
+        '-t',
+        'rsa',
+        ...portOption,
+        keyScanHost
+      ]);
       return keyscanOutput.stderr + keyscanOutput.stdout;
     } catch (e) {
+      core.info('[INFO] ssh-scan failed. Returning default keys');
       return `\
 # github.com:22 SSH-2.0-babeld-1f0633a6
 github.com ssh-rsa AAAAB3NzaC1yc2EAAAABIwAAAQEAq2A7hRGmdnm9tUDbO9IDSwBK6TbQa+PXYPCPy6rbTrTtw7PHkccKrpp0yVhp5HdEIcKr6pLlVDBfOLX9QUsyCOV0wzfjIJNlGEYsdlLJizHhbn2mUjvSAHQqZETYP81eFzLQNnPHt4EVVUh7VfDESU84KezmD5QlWpXLmvU31/yMf+Se8xhHTvKSCZIFImWwoG6mbUoWf9nzpIoaSjB+weqqUUmpaaasXVal72J+UX2B+2RPW3RcT0eOzQgqlJL3RKrTJvdsjE3JEAvGq3lGHSZXy28G3skua2SmVi/w4yCE6gbODqnTWlg7+wC604ydGXA8VJiS5ap43JXiUFFAaQ==
+# ssh.github.com:443 SSH-2.0-babeld-17a926d7
+[ssh.github.com]:443 ssh-rsa AAAAB3NzaC1yc2EAAAABIwAAAQEAq2A7hRGmdnm9tUDbO9IDSwBK6TbQa+PXYPCPy6rbTrTtw7PHkccKrpp0yVhp5HdEIcKr6pLlVDBfOLX9QUsyCOV0wzfjIJNlGEYsdlLJizHhbn2mUjvSAHQqZETYP81eFzLQNnPHt4EVVUh7VfDESU84KezmD5QlWpXLmvU31/yMf+Se8xhHTvKSCZIFImWwoG6mbUoWf9nzpIoaSjB+weqqUUmpaaasXVal72J+UX2B+2RPW3RcT0eOzQgqlJL3RKrTJvdsjE3JEAvGq3lGHSZXy28G3skua2SmVi/w4yCE6gbODqnTWlg7+wC604ydGXA8VJiS5ap43JXiUFFAaQ==
 `;
     }
   })();
@@ -46,12 +58,14 @@ github.com ssh-rsa AAAAB3NzaC1yc2EAAAABIwAAAQEAq2A7hRGmdnm9tUDbO9IDSwBK6TbQa+PXY
   await exec.exec('chmod', ['600', idRSA]);
 
   const sshConfigPath = path.join(sshDir, 'config');
-  const sshConfigContent = `\
+  const sshConfigContent =
+    `\
 Host ${host}
-    HostName ${host}
+    HostName ${sshProxyHost || host}
     IdentityFile ~/.ssh/github
     User git
-`;
+` + (sshProxyPort ? `    Port ${sshProxyPort}\n` : '');
+
   fs.writeFileSync(sshConfigPath, sshConfigContent + '\n');
   core.info(`[INFO] wrote ${sshConfigPath}`);
   await exec.exec('chmod', ['600', sshConfigPath]);

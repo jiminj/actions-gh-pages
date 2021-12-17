@@ -55,6 +55,11 @@ describe('setSSHKey()', () => {
     SshProxy: ''
   });
 
+  const getAllCallParamsByFirstParam = (mockFunc: jest.Mock, firstParam: string) =>
+    mockFunc.mock.calls.filter(c => {
+      return c[0].indexOf(firstParam) !== -1;
+    });
+
   beforeEach(() => {
     jest.resetModules();
   });
@@ -76,17 +81,89 @@ describe('setSSHKey()', () => {
     );
   });
 
+  test('write host information on config file', async () => {
+    const inps: Inputs = createInputs();
+    await setSSHKey(inps, 'github.com/owner/repo');
+
+    const configWriteCallParams = getAllCallParamsByFirstParam(
+      fs.writeFileSync as jest.Mock,
+      'config'
+    );
+    expect(configWriteCallParams.length).toBe(1);
+    const configParam = configWriteCallParams[0][1];
+    expect(configParam).toContain('Host github.com');
+    expect(configParam).toContain('HostName github.com');
+    expect(configParam).not.toContain('Port');
+  });
+
   test('SSH key fallbacks to default value if ssh-keyscan fails', async () => {
     const inps: Inputs = createInputs();
-    (exec.getExecOutput as jest.Mock).mockImplementation(() => {
+    (exec.getExecOutput as jest.Mock).mockImplementationOnce(() => {
       throw new Error('error');
     });
 
     await setSSHKey(inps, 'github.com/owner/repo');
-    expect(fs.writeFileSync).toHaveBeenCalledWith(
-      expect.stringContaining('known_hosts'),
-      expect.stringContaining('# github.com:22 SSH-2.0-babeld-1f0633a6')
+
+    const knownHostWriteCallParams = getAllCallParamsByFirstParam(
+      fs.writeFileSync as jest.Mock,
+      'known_hosts'
     );
+    expect(knownHostWriteCallParams.length).toBe(1);
+    const param = knownHostWriteCallParams[0][1];
+    expect(param).toContain('# github.com:22 SSH-2.0-babeld-1f0633a6');
+    expect(param).toContain('github.com ssh-rsa AAAAB3NzaC1yc');
+  });
+
+  test('invokes ssh-keyscan to ssh proxy address if ssh_proxy is given', async () => {
+    const inps: Inputs = {
+      ...createInputs(),
+      SshProxy: 'ssh.github.com'
+    };
+
+    await setSSHKey(inps, 'github.com/owner/repo');
+
+    const sshKeyscanCallParams = getAllCallParamsByFirstParam(
+      exec.getExecOutput as jest.Mock,
+      'ssh-keyscan'
+    );
+    expect(sshKeyscanCallParams.length).toBe(1);
+    const keyScanParam = sshKeyscanCallParams[0][1];
+    expect(keyScanParam).toEqual(['-t', 'rsa', 'ssh.github.com']);
+  });
+
+  test('write ssh proxy hostname on config file if ssh_proxy is given', async () => {
+    const inps: Inputs = {
+      ...createInputs(),
+      SshProxy: 'ssh.github.com'
+    };
+
+    await setSSHKey(inps, 'github.com/owner/repo');
+
+    const configWriteCallParams = getAllCallParamsByFirstParam(
+      fs.writeFileSync as jest.Mock,
+      'config'
+    );
+    expect(configWriteCallParams.length).toBe(1);
+    const configParam = configWriteCallParams[0][1];
+    expect(configParam).toContain('Host github.com');
+    expect(configParam).toContain('HostName ssh.github.com');
+  });
+
+  test('write ssh proxy port on config file if ssh_proxy is given with port', async () => {
+    const inps: Inputs = {
+      ...createInputs(),
+      SshProxy: 'ssh.github.com:9999'
+    };
+
+    await setSSHKey(inps, 'github.com/owner/repo');
+
+    const configWriteCallParams = getAllCallParamsByFirstParam(
+      fs.writeFileSync as jest.Mock,
+      'config'
+    );
+    expect(configWriteCallParams.length).toBe(1);
+    const configParam = configWriteCallParams[0][1];
+    expect(configParam).toContain('Port 9999');
   });
 });
 
