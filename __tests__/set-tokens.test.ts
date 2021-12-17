@@ -51,7 +51,8 @@ describe('setSSHKey()', () => {
     TagMessage: '',
     DisableNoJekyll: false,
     CNAME: '',
-    ExcludeAssets: ''
+    ExcludeAssets: '',
+    SshProxy: ''
   });
 
   beforeEach(() => {

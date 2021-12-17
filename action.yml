@@ -77,3 +77,6 @@ inputs:
     description: 'Set files or directories to exclude from a publish directory.'
     required: false
     default: '.github'
+  ssh_proxy:
+    description: 'Set a SSH proxy address to access the host with'
+    required: false

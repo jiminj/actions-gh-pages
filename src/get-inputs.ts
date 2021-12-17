@@ -28,7 +28,8 @@ export function showInputs(inps: Inputs): void {
 [INFO] TagMessage: ${inps.TagMessage}
 [INFO] EnableJekyll (DisableNoJekyll): ${inps.DisableNoJekyll}
 [INFO] CNAME: ${inps.CNAME}
-[INFO] ExcludeAssets ${inps.ExcludeAssets}
+[INFO] ExcludeAssets ${inps.ExcludeAssets},
+[INFO] SshProxy: ${inps.SshProxy}
 `);
 }
 
@@ -67,7 +68,8 @@ export function getInputs(): Inputs {
     TagMessage: core.getInput('tag_message'),
     DisableNoJekyll: useBuiltinJekyll,
     CNAME: core.getInput('cname'),
-    ExcludeAssets: core.getInput('exclude_assets')
+    ExcludeAssets: core.getInput('exclude_assets'),
+    SshProxy: core.getInput('ssh_proxy')
   };
 
   return inps;
